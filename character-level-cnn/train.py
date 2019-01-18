@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from tensorboardX import SummaryWriter
 
-from model import CharCNN
+from model import CharCNN, CharCNNBN
 from dataset import TextDataset
 from utils import get_grad_norm, AverageMeter, topk_accuracy
 
@@ -120,7 +120,7 @@ def test_model(epoch, best_acc):
         print('==> Saving model..')
         if not os.path.isdir('save_model'):
             os.mkdir('save_model')
-        torch.save(model.state_dict(), './save_model/ckpt.pth')
+        torch.save(model.state_dict(), './save_model/ckpt_bn.pth')
         best_acc = acc
 
     return best_acc
