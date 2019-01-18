@@ -14,7 +14,7 @@ from tensorboardX import SummaryWriter
 
 from model import CharCNN
 from dataset import TextDataset
-from utils import get_grad_norm, AverageMeter
+from utils import get_grad_norm, AverageMeter, topk_accuracy
 
 
 parser = argparse.ArgumentParser(description='Character-level convolutional neural network for text classification')
@@ -40,7 +40,8 @@ def train_model(epoch):
     
     batch_time = AverageMeter()
     losses = AverageMeter()
-
+    top1 = AverageMeter()
+    
     end = time.time()
     
     total = 0
@@ -60,10 +61,9 @@ def train_model(epoch):
         grad_norm = get_grad_norm(model)
         # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
-
-        _, predicted = outputs.max(1)
-        total += targets.size(0)
-        correct += predicted.eq(targets).sum().item()
+        
+        acc, _ = topk_accuracy(outputs, targets, topk=(1, 1))
+        top1.update(acc[0].item(), args.batch_size)
 
         losses.update(loss.item(), args.batch_size)
         batch_time.update(time.time() - end)
@@ -71,10 +71,9 @@ def train_model(epoch):
 
         if batch_idx % args.print_freq == 0:
             print('Train Epoch: {} [{}/{}]| Loss: {:.3f} | acc: {:.3f} | grad norm: {:.3f} | batch time: {:.3f}'.format(
-                  epoch,  batch_idx, len(train_loader), losses.val, correct / total, grad_norm, batch_time.avg))    
+                  epoch,  batch_idx, len(train_loader), losses.val, top1.val, grad_norm, batch_time.avg))    
     
-    acc = 100.0 * (correct / total)
-    writer.add_scalar('log/train accuracy', acc, epoch)
+    writer.add_scalar('log/train accuracy', top1.avg, epoch)
     writer.add_scalar('log/train loss', losses.avg, epoch)
     
     for name, param in model.named_parameters():
@@ -129,7 +128,7 @@ def test_model(epoch, best_acc):
 
 if __name__ == "__main__":
     start = time.time()
-    vocab_list = list("""abcdefghijklmnopqrstuvwxyz0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}""")
+    vocab_list = list("""abcdefghijklmnopqrstuvwxyz0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} """)
     print('==> convert csv to hdf5')
     # convert_csv_hdf5(args.data_path, args.seq_length, vocab_list)
         
@@ -140,10 +139,9 @@ if __name__ == "__main__":
                                          shuffle=True, num_workers=args.num_workers)
     test_loader = data_utils.DataLoader(test_dataset, batch_size=args.batch_size, 
                                         shuffle=True, num_workers=args.num_workers)
-    print(train_dataset.num_classes)
-    asdf
+
     print('==> make model')
-    model = CharCNN(num_classes=train_dataset.num_classes, seq_length=1014, in_channels=68, 
+    model = CharCNN(num_classes=train_dataset.num_classes, seq_length=1014, in_channels=69, 
                     num_channels=256, num_features=1024, large=args.large_model)
     model.to(device)
     print("# parameters:", sum(param.numel() for param in model.parameters()))
