@@ -27,9 +27,8 @@ class TextDataset(Dataset):
                 for tx in line[1:]:
                     text += tx
                     text += " "
-
+                
                 label = int(line[0]) - 1
-
                 self.label_list.append(label)
                 self.data_list.append(text.lower())
         
@@ -40,26 +39,34 @@ class TextDataset(Dataset):
         data = self.data_list[index]
         label = self.label_list[index]
 
+        char_id_list = []
         char_feature_list = []
+        
         for char in data:
             try:
                 char_id = self.vocab_list.index(char)
                 char_feature = self.identity_mat[char_id]
+                char_id += 1
             except:
                 char_feature = np.zeros(len(self.vocab_list))
+                char_id = 0
+            char_id_list.append(char_id)
             char_feature_list.append(char_feature)
 
         if len(char_feature_list) > self.seq_length:
             char_feature_list = char_feature_list[:self.seq_length]
+            char_id_list = char_id_list[:self.seq_length]
             
         if len(char_feature_list) < self.seq_length:
             for i in range(self.seq_length-len(char_feature_list)):
                 char_feature = np.zeros(len(self.vocab_list))
                 char_feature_list.append(char_feature)
+                char_id_list.append(0)
         
         data = torch.Tensor(np.stack(char_feature_list))
+        data_id = torch.Tensor(np.stack(char_id_list)).long()
         label = torch.Tensor([label])
-        return data, label
+        return data, data_id, label
  
     def __len__(self):
         return len(self.data_list)

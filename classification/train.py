@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from tensorboardX import SummaryWriter
 
-from model import charcnn
+from model import charcnn, deepcnn
 from dataset import TextDataset
 from utils import get_grad_norm, AverageMeter, topk_accuracy, download_dataset
 
@@ -22,7 +22,7 @@ parser.add_argument('--name', required=True, help='')
 parser.add_argument('--model', required=True, help='select one of charcnn, deepcnn, crnn')
 parser.add_argument('--gpu', required=True, help='')
 parser.add_argument('--dataset', default='amazon', help='')
-parser.add_argument('--batch_size', default=512, help='')
+parser.add_argument('--batch_size', default=128, help='')
 parser.add_argument('--print_freq', default=30, help='')
 parser.add_argument('--num_workers', default=8, help='')
 parser.add_argument('--num_feature', default=1024, help='')
@@ -50,14 +50,16 @@ def train_model(epoch):
     
     total = 0
     correct = 0
-    for batch_idx, (inputs, targets) in enumerate(train_loader):        
+    for batch_idx, (inputs, inputs_id, targets) in enumerate(train_loader):        
         if inputs.size(0) < args.batch_size:
             continue
-        inputs, targets = inputs.to(device), targets.to(device)
+        inputs, inputs_id, targets = inputs.to(device), inputs_id.to(device), targets.to(device)
         targets = targets.long().squeeze(-1)
         
-
-        outputs = model(inputs)
+        if args.model == 'charcnn':
+            outputs = model(inputs)
+        else:
+            outputs = model(inputs_id)
         loss = F.cross_entropy(outputs, targets)
 
         optimizer.zero_grad()
@@ -95,13 +97,17 @@ def test_model(epoch, best_acc):
     total = 0
     correct = 0
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(test_loader):
+        for batch_idx, (inputs, inputs_id, targets) in enumerate(test_loader):
             if inputs.size(0) < args.batch_size:
                 continue
-            inputs, targets = inputs.to(device), targets.to(device)
+            inputs, inputs_id, targets = inputs.to(device), inputs_id.to(device), targets.to(device)
             targets = targets.long().squeeze(-1)
 
-            outputs = model(inputs)
+            if args.model == 'charcnn':
+                outputs = model(inputs)
+            else:
+                outputs = model(inputs_id)
+                
             loss = F.cross_entropy(outputs, targets)
 
             _, predicted = outputs.max(1)
@@ -146,7 +152,9 @@ if __name__ == "__main__":
 
     print('==> make model')
     if args.model == 'charcnn':
-        model = charcnn.CharCNN(num_classes=train_dataset.num_classes, seq_length=1014, in_channels=69, num_channels=256, num_features=1024, large=args.large_model)
+        model = charcnn.CharCNN(num_classes=train_dataset.num_classes, seq_length=1014, in_channels=len(vocab_list), num_channels=256, num_features=1024, large=args.large_model)
+    elif args.model == 'deepcnn':
+        model = deepcnn.deepcnn()
     
     model.to(device)
     print("# parameters:", sum(param.numel() for param in model.parameters()))
