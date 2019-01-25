@@ -103,9 +103,9 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-/logs
-/save_model
-/data
+logs/
+save_model/
+data/
 *.txt
 *.gz
 *.csv
