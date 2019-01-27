@@ -28,6 +28,4 @@ python train.py --name 'name of logs' --model 'with model to run' --gpu 'which g
   - batch time: 0.353s (512 batch)
   - accuracy: 59.61 %
 
-[
-![untitled](https://user-images.githubusercontent.com/16641054/51795184-704f7a00-2222-11e9-97f5-c70d5f311f5d.png)
-](url)
+<img src='https://user-images.githubusercontent.com/16641054/51795184-704f7a00-2222-11e9-97f5-c70d5f311f5d.png' width='600px'>
