@@ -12,17 +12,17 @@ import numpy as np
 import pandas as pd
 from tensorboardX import SummaryWriter
 
-from model import charcnn, deepcnn
+from model import charcnn, deepcnn, lstmcnn
 from dataset import TextDataset
 from utils import get_grad_norm, AverageMeter, topk_accuracy, download_dataset
 
 
 parser = argparse.ArgumentParser(description='Character-level convolutional neural network for text classification')
 parser.add_argument('--name', required=True, help='')
-parser.add_argument('--model', required=True, help='select one of charcnn, deepcnn, crnn')
+parser.add_argument('--model', required=True, help='select one of charcnn, deepcnn, lstmcnn')
 parser.add_argument('--gpu', required=True, help='')
 parser.add_argument('--dataset', default='amazon', help='')
-parser.add_argument('--batch_size', default=128, help='')
+parser.add_argument('--batch_size', default=512, help='')
 parser.add_argument('--print_freq', default=30, help='')
 parser.add_argument('--num_workers', default=8, help='')
 parser.add_argument('--num_feature', default=1024, help='')
@@ -138,7 +138,11 @@ def test_model(epoch, best_acc):
 
 if __name__ == "__main__":
     start = time.time()
-    vocab_list = list("""abcdefghijklmnopqrstuvwxyz0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} """)
+    if args.model == 'lstmcnn':
+        vocab_list = list("""abcdefghijklmnopqrstuvwxyzABSCEFGHIJKLMNOPQRSTUVWXYZ0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} """)
+    else:
+        vocab_list = list("""abcdefghijklmnopqrstuvwxyz0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} """)
+        
     print('==> download dataset ' + args.dataset)
     download_dataset(args.data_path)
         
@@ -155,6 +159,8 @@ if __name__ == "__main__":
         model = charcnn.CharCNN(num_classes=train_dataset.num_classes, seq_length=1014, in_channels=len(vocab_list), num_channels=256, num_features=1024, large=args.large_model)
     elif args.model == 'deepcnn':
         model = deepcnn.deepcnn()
+    elif args.model == 'lstmcnn':
+        model = lstmcnn.LSTMCNN(num_classes=train_dataset.num_classes, seq_length=1014, num_chars=len(vocab_list), emb_size=8, num_channels=128, lstm_dim=128)
     
     model.to(device)
     print("# parameters:", sum(param.numel() for param in model.parameters()))
