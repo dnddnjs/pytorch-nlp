@@ -44,7 +44,10 @@ python train.py --name 'name of logs' --model 'with model to run' --gpu 'which g
 
 ## Language Model
 - Character-Aware Neural Language Models: [paper](https://www.aaai.org/ocs/index.php/AAAI/AAAI16/paper/viewFile/12489/12017)
-
+- reference
+  - https://github.com/FengZiYjun/CharLM
+  - https://github.com/pytorch/examples/blob/master/word_language_model
+  
 ### How to train model
 If you run code like this, then the Penn Treebank dataset will be downloaded and the model you choose will be trained. It took about 30 minute to train the models. 
 
