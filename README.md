@@ -2,15 +2,14 @@
 PyTorch Implementation for Natural Langauge Processing.
 There are several paper implementation about these tasks.
 
-- Classification
-- Language Model
-- Named Entity Recognition
-- Machine Translation
-- Question & Answering
+- [x] Classification
+- [x] Language Model
+- [ ] Named Entity Recognition
+- [ ] Machine Translation
+- [ ] Question & Answering
 
 <br/>
 
----
 ## Classification
 - charcnn: Character-level Convolutional Networks for Text Classification [blog](https://www.notion.so/daangn/Character-level-Convolutional-Networks-for-Text-Classification-3fb5552c27b94a3099e8e79ba1a272f9)
 - deepcnn: Very Deep Convolutional Networks for Text Classification [blog](https://www.notion.so/daangn/Very-Deep-Convolutional-Networks-for-Text-Classification-63c3f055d19b4a1285891c99f5b06517)
@@ -42,7 +41,6 @@ python train.py --name 'name of logs' --model 'with model to run' --gpu 'which g
 
 <br/>
 
----
 
 ## Language Model
 - Character-Aware Neural Language Models: [paper](https://www.aaai.org/ocs/index.php/AAAI/AAAI16/paper/viewFile/12489/12017)
