@@ -1,5 +1,12 @@
 # pytorch-nlp
-PyTorch Implementation for Natural Langauge Processing
+PyTorch Implementation for Natural Langauge Processing.
+There are several paper implementation about these tasks.
+
+- Classification
+- Language Model
+- Named Entity Recognition
+- Machine Translation
+- Question & Answering
 
 <br/>
 
