@@ -13,23 +13,6 @@ def get_grad_norm(model):
     grad_norm = total_norm ** (1. / 2)
     return grad_norm
 
-
-# code from https://github.com/pytorch/examples/blob/master/imagenet/main.py
-def topk_accuracy(output, target, topk=(1,)):
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
-    
     
 class AverageMeter(object):
     def __init__(self):
@@ -46,69 +29,6 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-        
-
-def convert_csv_hdf5(data_path, seq_length, vocal_list):
-    num_train_data = 0
-    num_test_data = 0
-    
-    # training data
-    file_path = data_path + '/train.h5'
-    if os.path.isfile(file_path):
-        h5f = h5py.File(file_path, 'r')
-        data_string = h5f['train']
-        num_train_data = data_string.shape[0]
-        print('the number of train data is ', num_train_data)
-    else:
-        data_list = []
-        path = data_path + '/train.csv'
-        with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
-            for line in lines:
-                
-                data_list.append(line)
-
-        num_train_data = len(data_list)
-        print('the number of train data is ', num_train_data)
-        
-        f = h5py.File(file_path, 'w')
-        dt = h5py.special_dtype(vlen=str)
-        dset = f.create_dataset("train", (len(data_list),), dtype=dt)
-
-        for i, data in enumerate(data_list):
-            if i % 10000 == 0:
-                print(i)
-            dset[i] = data_list[i]
-
-
-    # training data
-    file_path = data_path + '/test.h5'
-    if os.path.isfile(file_path):
-        h5f = h5py.File(file_path, 'r')
-        data_string = h5f['test']
-        num_train_data = data_string.shape[0]
-        print('the number of train data is ', num_train_data)
-    else:
-        data_list = []
-        path = data_path + '/test.csv'
-        with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
-            for line in lines:
-                data_list.append(line)
-
-        num_train_data = len(data_list)
-        print('the number of test data is ', num_train_data)
-        
-        f = h5py.File(file_path, 'w')
-        dt = h5py.special_dtype(vlen=str)
-        dset = f.create_dataset("test", (len(data_list),), dtype=dt)
-
-        for i, data in enumerate(data_list):
-            if i % 10000 == 0:
-                print(i)
-            dset[i] = data_list[i]
-            
-    return num_train_data, num_test_data
 
 
 def download_dataset(data_path, dataset):
@@ -124,4 +44,19 @@ def download_dataset(data_path, dataset):
             os.system('wget -O data/test.txt https://raw.githubusercontent.com/wojzaremba/lstm/master/data/ptb.test.txt')
     os.system('ls -lh {}'.format(data_path))
         
-        
+
+def batchify(char_data, word_data, batch_size): 
+    nbatch = char_data.size(0) // batch_size
+    char_data = char_data.narrow(0, 0, nbatch * batch_size)
+    word_data = word_data.narrow(0, 0, nbatch * batch_size)
+    char_data = char_data.view(batch_size, nbatch, char_data.size(-1)).transpose(0, 1).contiguous()
+    word_data = word_data.view(batch_size, -1).t().contiguous()
+    print(list(char_data.size()), list(word_data.size()))
+    return char_data, word_data
+
+
+def get_batch(char_data, word_data, i, args):
+    seq_len = min(args.seq_length, len(char_data) - 1 - i)
+    data = char_data[i:i+seq_len]
+    target = word_data[i+1:i+1+seq_len]
+    return data.transpose(0, 1), target.transpose(0, 1).contiguous().view(-1)

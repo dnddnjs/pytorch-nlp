@@ -7,28 +7,28 @@ import torch.utils.data as data_utils
 
 import os
 import time
+import math
 import argparse
 import numpy as np
 import pandas as pd
 from tensorboardX import SummaryWriter
 
-from model import charcnn
-from dataset import TextDataset
-from utils import get_grad_norm, AverageMeter, topk_accuracy, download_dataset
+from model import lstmcnn
+from data import Corpus
+from utils import get_grad_norm, AverageMeter, \
+                  download_dataset, batchify, get_batch
 
 
 parser = argparse.ArgumentParser(description='Character-Aware Neural Language Model')
 parser.add_argument('--name', required=True, help='')
-parser.add_argument('--model', required=True, help='select one of charcnn, deepcnn, lstmcnn')
 parser.add_argument('--gpu', required=True, help='')
 parser.add_argument('--dataset', default='penn', help='')
-parser.add_argument('--batch_size', default=512, help='')
-parser.add_argument('--print_freq', default=30, help='')
-parser.add_argument('--num_workers', default=8, help='')
-parser.add_argument('--num_feature', default=1024, help='')
-parser.add_argument('--num_channels', default=256, help='')
-parser.add_argument('--large_model', default=False, help='')
-parser.add_argument('--seq_length', default=1014, help='')
+parser.add_argument('--batch_size', default=20, help='')
+parser.add_argument('--print_freq', default=50, help='')
+parser.add_argument('--num_workers', default=1, help='')
+parser.add_argument('--lstm_dim', default=300, help='')
+parser.add_argument('--emb_dim', default=15, help='')
+parser.add_argument('--seq_length', default=35, help='')
 parser.add_argument('--data_path', default='./data/', help='')
 parser.add_argument('--logdir', type=str, default='logs/', help='tensorboardx log directory')
 args = parser.parse_args()
@@ -44,135 +44,123 @@ def train_model(epoch):
     
     batch_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    
-    end = time.time()
-    
-    total = 0
-    correct = 0
-    for batch_idx, (inputs, inputs_id, targets) in enumerate(train_loader):        
-        if inputs.size(0) < args.batch_size:
-            continue
-        inputs, inputs_id, targets = inputs.to(device), inputs_id.to(device), targets.to(device)
-        targets = targets.long().squeeze(-1)
-        
-        if args.model == 'charcnn':
-            outputs = model(inputs)
-        else:
-            outputs = model(inputs_id)
-        loss = F.cross_entropy(outputs, targets)
 
-        optimizer.zero_grad()
+    end = time.time()
+    ntokens = len(corpus.dictionary)
+    
+    hidden = (torch.zeros(2, args.batch_size, args.lstm_dim).to(device),
+              torch.zeros(2, args.batch_size, args.lstm_dim).to(device))
+    
+    for batch, i in enumerate(range(0, train_inputs.size(0) - 1, args.seq_length)):
+        data, targets = get_batch(train_inputs, train_targets, i, args)
+        data = data.to(device)
+        targets = targets.to(device)
+        
+        model.zero_grad()
+        hidden = [state.detach() for state in hidden]
+        output, hidden = model(data, hidden)
+
+        loss = F.cross_entropy(output, targets)
         loss.backward()
         grad_norm = get_grad_norm(model)
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         optimizer.step()
         
-        acc, _ = topk_accuracy(outputs, targets, topk=(1, 1))
-        top1.update(acc[0].item(), args.batch_size)
-
         losses.update(loss.item(), args.batch_size)
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if batch_idx % args.print_freq == 0:
-            print('Train Epoch: {} [{}/{}]| Loss: {:.3f} | acc: {:.3f} | grad norm: {:.3f} | batch time: {:.3f}'.format(
-                  epoch,  batch_idx, len(train_loader), losses.val, top1.val, grad_norm, batch_time.avg))    
+        if batch % args.print_freq == 0:
+            print('Train Epoch: {} [{}]| Loss: {:.3f} | pexplexity: {:.3f} | grad norm: {:.3f} | batch time: {:.3f}'.format(
+                  epoch, batch, losses.val, np.exp(losses.avg), grad_norm, batch_time.avg))    
     
-    writer.add_scalar('log/train accuracy', top1.avg, epoch)
     writer.add_scalar('log/train loss', losses.avg, epoch)
+    writer.add_scalar('log/train perplexity', np.exp(losses.avg), epoch)
     
     for name, param in model.named_parameters():
         writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
 
         
-def test_model(epoch, best_acc):
+def valid_model(epoch, best_acc, learning_rate):
     model.eval()
 
     batch_time = AverageMeter()
     losses = AverageMeter()
-
+    
     end = time.time()
     
-    total = 0
-    correct = 0
+    ntokens = len(corpus.dictionary)
+    hidden = (torch.zeros(2, eval_batch_size, args.lstm_dim).to(device),
+              torch.zeros(2, eval_batch_size, args.lstm_dim).to(device))
+    
     with torch.no_grad():
-        for batch_idx, (inputs, inputs_id, targets) in enumerate(test_loader):
-            if inputs.size(0) < args.batch_size:
-                continue
-            inputs, inputs_id, targets = inputs.to(device), inputs_id.to(device), targets.to(device)
-            targets = targets.long().squeeze(-1)
+        for batch, i in enumerate(range(0, valid_inputs.size(0) - 1, args.seq_length)):
+            data, targets = get_batch(valid_inputs, valid_targets, i, args)
+            data = data.to(device)
+            targets = targets.to(device)
 
-            if args.model == 'charcnn':
-                outputs = model(inputs)
-            else:
-                outputs = model(inputs_id)
-                
-            loss = F.cross_entropy(outputs, targets)
-
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-
+            hidden = [state.detach() for state in hidden]
+            output, hidden = model(data, hidden)
+            
+            loss = F.cross_entropy(output, targets)
             losses.update(loss.item(), args.batch_size)
+
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if batch_idx % args.print_freq == 0:
-                print('Test Epoch: {} [{}/{}]| Loss: {:.3f} | acc: {:.3f} | batch time: {:.3f}'.format(
-                      epoch,  batch_idx, len(test_loader), losses.val, correct / total, batch_time.avg))    
+            if batch % args.print_freq == 0:
+                print('Test Epoch: {} [{}]| Loss: {:.3f} | pexplexity: {:.3f} | batch time: {:.3f}'.format(
+                      epoch, batch, losses.avg, np.exp(losses.avg), batch_time.avg))    
                 
-    acc = 100.0 * (correct / total)
-    writer.add_scalar('log/test accuracy', acc, epoch)
+    # acc = 100.0 * (correct / total)
     writer.add_scalar('log/test loss', losses.avg, epoch)
+    writer.add_scalar('log/test perplexity', np.exp(losses.avg), epoch)
     
-    if acc > best_acc:
+    if abs(np.exp(losses.avg) - best_acc) < 1 and learning_rate > 0.001:
+        learning_rate *= 0.5
+        
+    if np.exp(losses.avg) < best_acc:
         print('==> Saving model..')
         if not os.path.isdir('save_model'):
             os.mkdir('save_model')
         torch.save(model.state_dict(), './save_model/' + args.name + '.pth')
-        best_acc = acc
+        best_acc = np.exp(losses.avg)
 
-    return best_acc
+    return best_acc, learning_rate
 
 
 if __name__ == "__main__":
     start = time.time()
-    if args.model == 'lstmcnn':
-        vocab_list = list("""abcdefghijklmnopqrstuvwxyzABSCEFGHIJKLMNOPQRSTUVWXYZ0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} """)
-    else:
-        vocab_list = list("""abcdefghijklmnopqrstuvwxyz0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} """)
-        
     print('==> download dataset ' + args.dataset)
     download_dataset(args.data_path, args.dataset)
-        
-    print('==> make dataset')
-    train_dataset = TextDataset(args.data_path, args.seq_length, vocab_list, is_train=True)
-    test_dataset = TextDataset(args.data_path, args.seq_length, vocab_list, is_train=False)
-    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, 
-                                         shuffle=True, num_workers=args.num_workers)
-    test_loader = data_utils.DataLoader(test_dataset, batch_size=args.batch_size, 
-                                        shuffle=True, num_workers=args.num_workers)
-
-    print('==> make model')
-    if args.model == 'charcnn':
-        model = charcnn.CharCNN(num_classes=train_dataset.num_classes, seq_length=1014, in_channels=len(vocab_list), num_channels=256, num_features=1024, large=args.large_model)
-    elif args.model == 'deepcnn':
-        model = deepcnn.deepcnn()
-    elif args.model == 'lstmcnn':
-        model = lstmcnn.LSTMCNN(num_classes=train_dataset.num_classes, seq_length=1014, num_chars=len(vocab_list), emb_size=8, num_channels=128, lstm_dim=128)
+    print('')
     
+    print('==> make dataset')
+    corpus = Corpus(args.data_path)
+    num_chars, num_words = len(corpus.dictionary.idx2char), len(corpus.dictionary.idx2word)
+    eval_batch_size = 10
+    train_inputs, train_targets = batchify(corpus.train_charidx, corpus.train_wordidx, args.batch_size)
+    valid_inputs, valid_targets = batchify(corpus.valid_charidx, corpus.valid_wordidx, eval_batch_size)
+    test_inputs, test_targets = batchify(corpus.test_charidx, corpus.test_wordidx, eval_batch_size)
+    print('')
+    
+    print('==> make model')
+    model = lstmcnn.LSTMCNN(num_words, num_chars, seq_length=args.seq_length, emb_dim=args.emb_dim, lstm_dim=args.lstm_dim)
     model.to(device)
     print("# parameters:", sum(param.numel() for param in model.parameters()))
-
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-5)
+    print('')
+    
+    learning_rate = 1.0
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-5)
     writer = SummaryWriter(args.logdir + args.name)
     
-    best_acc = 0
+    print('==> train model')
+    best_acc = 1000000
     print('----------------------------------------------')
-    for epoch in range(20):
+    for epoch in range(35):
         train_model(epoch)
-        best_acc = test_model(epoch, best_acc)
+        best_acc, learning_rate = valid_model(epoch, best_acc, learning_rate)
+        optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-5)
         print('best test accuracy is ', best_acc)
 
     print('overall time which is spent for training is :', time.time() - start)
